@@ -56,6 +56,8 @@ go build -o ethenv ./cmd/ethenv
 ./ethenv status --env prod         # PEERS = 2 on every node proves consensus mesh
 ./ethenv verify                    # runs the full evaluation checklist
 
+./ethenv serve                     # live dashboard → http://127.0.0.1:8080
+
 ./ethenv destroy --env prod        # IMPORTANT: stays in the free tier
 ./ethenv destroy --env dev
 ```
@@ -69,6 +71,15 @@ anvil --port 8545 --chain-id 1337 --block-time 2 &
 ```
 
 
+
+## Web UI
+
+`./ethenv serve` (binds 127.0.0.1:8080) opens a black-and-white single-page
+dashboard served by the same binary — zero JS dependencies, one embedded
+HTML file. It shows a block-height odometer that ticks with the chain, a
+per-block "tape", the node health table for the selected environment
+(reads each workspace's state file directly), and dev-chain actions
+(demo transfer + faucet). Deploy/destroy intentionally stay CLI-only.
 
 ## Evaluation criteria mapping
 

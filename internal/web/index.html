@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ethenv</title>
+<style>
+  :root {
+    --paper: #FCFCFA;
+    --ink: #141412;
+    --ink-60: rgba(20, 20, 18, .6);
+    --ink-40: rgba(20, 20, 18, .4);
+    --ink-15: rgba(20, 20, 18, .15);
+    --ink-06: rgba(20, 20, 18, .06);
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 40px 24px 64px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-60);
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .wordmark { font-family: var(--mono); font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+  .live { display: inline-flex; align-items: center; gap: 7px; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink); }
+  .live-dot.pulse { animation: pulse .8s ease-out 1; }
+  @keyframes pulse { 0% { transform: scale(1.9); opacity: .35; } 100% { transform: scale(1); opacity: 1; } }
+
+  .envs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 28px 0 44px; }
+  .env {
+    font: inherit;
+    text-align: left;
+    background: transparent;
+    border: 1.5px solid var(--ink);
+    padding: 16px 18px;
+    cursor: pointer;
+    color: var(--ink);
+    display: grid;
+    gap: 2px;
+  }
+  .env-name { font-family: var(--mono); font-size: 26px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+  .env-sub { font-family: var(--mono); font-size: 12px; color: var(--ink-60); }
+  .env.active { background: var(--ink); color: var(--paper); }
+  .env.active .env-sub { color: rgba(252, 252, 250, .65); }
+  .env.missing { border-style: dashed; }
+  .env:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .meter-label { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .hex { font-family: var(--mono); font-size: 12px; color: var(--ink-40); }
+
+  #odometer {
+    display: flex;
+    font-family: var(--mono);
+    font-size: clamp(56px, 12vw, 132px);
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+    margin: 4px 0 10px;
+  }
+  .slot { width: .62ch; height: 1em; overflow: hidden; }
+  .reel { display: block; transition: transform .4s cubic-bezier(.2, .7, .2, 1); }
+  .reel span { display: block; height: 1em; text-align: center; }
+  .slot.dim { opacity: .14; }
+  .slot + .slot { margin-left: .06em; }
+
+  #tape { height: 16px; margin: 0 0 44px; overflow: hidden; display: flex; align-items: flex-end; gap: 2px; }
+  .tick { width: 2px; height: 10px; background: var(--ink); flex: 0 0 auto; }
+  .tick:last-child { height: 16px; }
+
+  section + section { margin-top: 40px; }
+  .rule { border: 0; border-top: 1px solid var(--ink-15); margin: 0 0 14px; }
+  .rule-heavy { border-top: 2px solid var(--ink); }
+
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+  th {
+    text-align: left;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-60);
+    padding: 0 12px 8px 0;
+    border-bottom: 1px solid var(--ink);
+  }
+  td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--ink-15); white-space: nowrap; }
+  td.num, th.num { text-align: right; }
+  td.dim-text { color: var(--ink-40); }
+  tr.down td { color: var(--ink-40); }
+  .dot { font-size: 10px; vertical-align: 1px; }
+  .st-ok { color: var(--ink); }
+  .st-down { color: var(--ink-40); }
+  .tbl-scroll { overflow-x: auto; }
+
+  .actions { display: grid; gap: 18px; max-width: 560px; }
+  .action-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  input {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 9px 12px;
+    border: 1.5px solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+  }
+  input::placeholder { color: var(--ink-40); }
+  button.act {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 18px;
+    border: 1.5px solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button.act:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+  button.act:disabled { opacity: .4; cursor: default; }
+  #result { font-family: var(--mono); font-size: 12.5px; color: var(--ink-60); min-height: 1.4em; }
+
+  .empty {
+    border: 1.5px dashed var(--ink-40);
+    padding: 28px;
+    display: none;
+  }
+  .empty p { font-family: var(--mono); font-size: 13px; }
+  .empty .cmd { margin-top: 8px; font-weight: 700; }
+
+  footer { margin-top: 56px; padding-top: 14px; border-top: 1px solid var(--ink-15); display: flex; justify-content: space-between; gap: 12px; }
+
+  @media (max-width: 560px) {
+    body { padding: 24px 16px 48px; }
+    .envs { grid-template-columns: 1fr; }
+    .slot { width: .58ch; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reel { transition: none; }
+    .live-dot.pulse { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="wordmark">ethenv</div>
+    <div class="live">
+      <span class="eyebrow">multi-env ethereum on aws</span>
+      <span id="live-dot" class="live-dot" aria-hidden="true"></span>
+    </div>
+  </header>
+
+  <div id="envs" class="envs" role="tablist" aria-label="environment"></div>
+
+  <section aria-label="chain meter">
+    <div class="meter-label">
+      <span class="eyebrow">block height</span>
+      <span id="meter-hex" class="hex"></span>
+    </div>
+    <div id="odometer" aria-live="off"></div>
+    <div id="tape" aria-hidden="true"></div>
+  </section>
+
+  <section aria-label="nodes">
+    <div class="meter-label"><span class="eyebrow" id="nodes-title">nodes</span></div>
+    <div class="empty" id="empty">
+      <p id="empty-text"></p>
+      <p class="cmd" id="empty-cmd"></p>
+    </div>
+    <div class="tbl-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>node</th><th>endpoint</th><th>client</th>
+            <th class="num">chain</th><th class="num">block</th><th class="num">peers</th><th>status</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="actions-sec" aria-label="dev actions">
+    <hr class="rule rule-heavy">
+    <div class="meter-label"><span class="eyebrow">dev actions</span></div>
+    <div class="actions">
+      <div class="action-row">
+        <input id="amount" style="width:90px" value="0.1" inputmode="decimal" aria-label="amount in ETH">
+        <span class="eyebrow">eth</span>
+        <button id="send" class="act">Send from node account</button>
+      </div>
+      <div class="action-row">
+        <input id="faucet-to" style="flex:1; min-width:200px" placeholder="0x… recipient" aria-label="recipient address">
+        <input id="faucet-amt" style="width:80px" value="10" inputmode="decimal" aria-label="amount in ETH">
+        <button id="fund" class="act">Fund</button>
+      </div>
+      <p id="result" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <footer>
+    <span class="hex">terraform workspaces · anvil dev · geth clique poa prod</span>
+    <span class="hex" id="poll-note">polling every 2.5s</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const state = { env: "dev", envs: [], last: null, timer: null, busy: false };
+
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+async function loadEnvs() {
+  try {
+    const r = await fetch("/api/envs");
+    state.envs = await r.json();
+    renderEnvs();
+  } catch (e) { /* server unreachable; next tick retries */ }
+}
+
+function renderEnvs() {
+  const box = $("#envs");
+  box.innerHTML = "";
+  for (const e of state.envs) {
+    const b = document.createElement("button");
+    b.className = "env" + (e.name === state.env ? " active" : "") + (e.deployed ? "" : " missing");
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", e.name === state.env);
+    b.innerHTML =
+      '<span class="env-name">' + esc(e.name) + "</span>" +
+      '<span class="env-sub">' +
+      (e.deployed
+        ? esc(e.nodeCount + " × " + e.instanceType + " · chain " + e.chainId)
+        : "not deployed") +
+      "</span>";
+    b.onclick = () => selectEnv(e.name);
+    box.appendChild(b);
+  }
+}
+
+function selectEnv(name) {
+  if (state.env === name) return;
+  state.env = name;
+  state.last = null;
+  $("#tape").innerHTML = "";
+  $("#result").textContent = "";
+  renderEnvs();
+  poll();
+}
+
+function setOdometer(h) {
+  const box = $("#odometer");
+  const digits = String(h).padStart(9, "0");
+  while (box.children.length < digits.length) {
+    const slot = document.createElement("span");
+    slot.className = "slot";
+    const reel = document.createElement("span");
+    reel.className = "reel";
+    for (let d = 0; d <= 9; d++) {
+      const cell = document.createElement("span");
+      cell.textContent = d;
+      reel.appendChild(cell);
+    }
+    slot.appendChild(reel);
+    box.appendChild(slot);
+  }
+  const firstSig = h === 0 ? digits.length - 1 : digits.search(/[1-9]/);
+  [...digits].forEach((d, i) => {
+    const slot = box.children[i];
+    reel = slot.firstElementChild;
+    reel.style.transform = "translateY(-" + (Number(d) * 1) + "em)";
+    slot.classList.toggle("dim", i < firstSig);
+  });
+}
+
+function addTicks(delta) {
+  const tape = $("#tape");
+  const n = Math.min(delta, 12);
+  for (let i = 0; i < n; i++) {
+    const t = document.createElement("span");
+    t.className = "tick";
+    tape.appendChild(t);
+  }
+  while (tape.children.length > 160) tape.removeChild(tape.firstChild);
+}
+
+function renderStatus(data) {
+  $("#empty").style.display = "none";
+  $("#rows").parentElement.parentElement.style.display = "";
+  $("#nodes-title").textContent = "nodes — " + data.env;
+
+  const prev = state.last;
+  setOdometer(data.height);
+  $("#meter-hex").textContent = "chain " + data.chainId + " (0x" + data.chainId.toString(16) + ")";
+  if (prev !== null && data.height > prev && data.height - prev < 60) addTicks(data.height - prev);
+  state.last = data.height;
+
+  const body = $("#rows");
+  body.innerHTML = "";
+  for (const n of data.nodes) {
+    const tr = document.createElement("tr");
+    if (n.state !== "ok") tr.className = "down";
+    tr.innerHTML =
+      "<td>" + esc(n.name) + "</td>" +
+      '<td class="dim-text">' + esc(n.endpoint) + "</td>" +
+      "<td>" + (n.state === "ok" ? esc(n.client) : "—") + "</td>" +
+      '<td class="num">' + (n.state === "ok" ? n.chain : "—") + "</td>" +
+      '<td class="num">' + (n.state === "ok" ? n.block : "—") + "</td>" +
+      '<td class="num">' + (n.state === "ok" ? n.peers : "—") + "</td>" +
+      '<td class="' + (n.state === "ok" ? "st-ok" : "st-down") + '">' +
+      '<span class="dot">' + (n.state === "ok" ? "●" : "○") + "</span> " +
+      esc(n.state === "ok" ? "ok" : "down" + (n.err ? " — " + n.err : "")) +
+      "</td>";
+    body.appendChild(tr);
+  }
+
+  const devVisible = data.env === "dev";
+  $("#actions-sec").style.display = devVisible ? "" : "none";
+  pulse();
+}
+
+function renderEmpty(err) {
+  state.last = null;
+  $("#rows").innerHTML = "";
+  $("#odometer").innerHTML = "";
+  $("#meter-hex").textContent = "";
+  $("#tape").innerHTML = "";
+  $("#actions-sec").style.display = "none";
+  const e = $("#empty");
+  e.style.display = "";
+  $("#empty-text").textContent = state.env.toUpperCase() + " has no chain yet.";
+  $("#empty-cmd").textContent = "ethenv deploy --env " + state.env;
+}
+
+function pulse() {
+  const dot = $("#live-dot");
+  dot.classList.remove("pulse");
+  void dot.offsetWidth;
+  dot.classList.add("pulse");
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/status?env=" + state.env);
+    const data = await r.json();
+    if (!r.ok) { renderEmpty(data.error); return; }
+    renderStatus(data);
+  } catch (e) { /* keep last frame on transient failures */ }
+}
+
+async function runAction(path, body, busyMsg) {
+  if (state.busy) return;
+  state.busy = true;
+  $("#send").disabled = $("#fund").disabled = true;
+  $("#result").textContent = busyMsg;
+  try {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      $("#result").textContent = d.error || "Failed.";
+    } else if (d.hash) {
+      $("#result").textContent =
+        "mined " + d.hash.slice(0, 12) + "… in block " + d.block + " · " + d.gasUsed + " gas · status " + d.status;
+    } else {
+      $("#result").textContent = d.ok || "Done.";
+    }
+  } catch (e) {
+    $("#result").textContent = "Request failed — is the server still running?";
+  }
+  state.busy = false;
+  $("#send").disabled = $("#fund").disabled = false;
+}
+
+$("#send").onclick = () => runAction("/api/send-demo", { amount: $("#amount").value }, "Mining " + ($("#amount").value || "0.1") + " ETH transfer…");
+$("#fund").onclick = () => {
+  const to = $("#faucet-to").value.trim();
+  if (!to) { $("#result").textContent = "Enter a recipient address first."; return; }
+  runAction("/api/faucet", { to, amount: $("#faucet-amt").value }, "Funding " + to.slice(0, 10) + "…");
+};
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { clearInterval(state.timer); state.timer = null; }
+  else if (!state.timer) { state.timer = setInterval(poll, 2500); poll(); }
+});
+
+loadEnvs();
+poll();
+state.timer = setInterval(poll, 2500);
+setInterval(loadEnvs, 15000);
+</script>
+</body>
+</html>

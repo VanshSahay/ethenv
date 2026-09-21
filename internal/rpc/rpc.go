@@ -132,6 +132,58 @@ func (c *Client) Receipt(ctx context.Context, txHash string) (map[string]any, er
 	return receipt, json.Unmarshal(res, &receipt)
 }
 
+type NodeStatus struct {
+	Client string
+	Chain  uint64
+	Block  uint64
+	Peers  uint64
+	State  string
+	Err    string
+}
+
+func Probe(ctx context.Context, url string, attempts int) NodeStatus {
+	c := New(url)
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(2 * time.Second)
+		}
+		version, err := c.ClientVersion(ctx)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		chain, err := c.ChainID(ctx)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		block, err := c.BlockNumber(ctx)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		peers, _ := c.PeerCount(ctx)
+		return NodeStatus{Client: version, Chain: chain, Block: block, Peers: peers, State: "ok"}
+	}
+	st := NodeStatus{Client: "-", State: "down"}
+	if lastErr != nil {
+		st.Err = shortErr(lastErr)
+	}
+	return st
+}
+
+func shortErr(err error) string {
+	s := err.Error()
+	if i := strings.Index(s, ": "); i >= 0 {
+		s = s[i+2:]
+	}
+	if len(s) > 40 {
+		s = s[:37] + "..."
+	}
+	return s
+}
+
 func hexUint(raw json.RawMessage) (uint64, error) {
 	s := strings.Trim(string(raw), `"`)
 	s = strings.TrimPrefix(s, "0x")

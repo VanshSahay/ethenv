@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+
+	"ethenv/internal/web"
 )
 
 const usageText = `ethenv - multi-environment Ethereum networks on AWS
@@ -15,6 +17,7 @@ Usage:
   ethenv faucet --env dev --to 0x..   fund a dev account (anvil_setBalance)
   ethenv send-demo [--env dev]        send and mine a value transfer
   ethenv verify                       run the evaluation checklist end to end
+  ethenv serve [--addr host:port]     browser UI (default 127.0.0.1:8080)
   ethenv version                      print version
 
 Global flags: --dir <path>  terraform module directory (default "terraform")`
@@ -39,6 +42,8 @@ func Run(args []string) error {
 		return runSendDemo(args[1:])
 	case "verify":
 		return runVerify(args[1:])
+	case "serve":
+		return web.Run(args[1:])
 	case "version", "--version", "-v":
 		fmt.Println("ethenv v1.0.0")
 		return nil

@@ -52,19 +52,22 @@ func runStatus(args []string) error {
 	rows := make([][]string, 0, len(targets))
 	reachable := 0
 	for i, u := range targets {
-		row := probe(ctx, u)
-		if row.status == "ok" {
+		st := rpc.Probe(ctx, u, 2)
+		if st.State == "ok" {
 			reachable++
 		}
 		rows = append(rows, []string{
 			fmt.Sprintf("node-%d", i),
 			u,
-			row.client,
-			fmt.Sprintf("%d", row.chain),
-			fmt.Sprintf("%d", row.block),
-			fmt.Sprintf("%d", row.peers),
-			row.status,
+			st.Client,
+			fmt.Sprintf("%d", st.Chain),
+			fmt.Sprintf("%d", st.Block),
+			fmt.Sprintf("%d", st.Peers),
+			st.State,
 		})
+		if st.Err != "" {
+			rows[len(rows)-1][6] = st.State + ": " + st.Err
+		}
 	}
 
 	fmt.Println(ui.Header("node health:"))
@@ -74,60 +77,10 @@ func runStatus(args []string) error {
 
 	if reachable == 0 {
 		fmt.Println()
-		fmt.Println(ui.Warn("no node reachable yet - instances need ~3-4 min to install docker and start the chain"))
+		fmt.Println(ui.Warn("no node reachable yet - instances need ~90s to install docker and start the chain"))
 		fmt.Println(ui.Dim + "retry with: ethenv status" + envFlagHint(envName) + ui.Reset)
 	}
 	return nil
-}
-
-type nodeRow struct {
-	client       string
-	chain, block uint64
-	peers        uint64
-	status       string
-}
-
-func probe(ctx context.Context, url string) nodeRow {
-	c := rpc.New(url)
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		if attempt > 0 {
-			time.Sleep(2 * time.Second)
-		}
-		version, err := c.ClientVersion(ctx)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		chain, err := c.ChainID(ctx)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		block, err := c.BlockNumber(ctx)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		peers, _ := c.PeerCount(ctx)
-		return nodeRow{client: version, chain: chain, block: block, peers: peers, status: "ok"}
-	}
-	status := "down"
-	if lastErr != nil {
-		status = "down: " + shortErr(lastErr)
-	}
-	return nodeRow{client: "-", status: status}
-}
-
-func shortErr(err error) string {
-	s := err.Error()
-	if i := strings.Index(s, ": "); i >= 0 {
-		s = s[i+2:]
-	}
-	if len(s) > 40 {
-		s = s[:37] + "..."
-	}
-	return s
 }
 
 func envFlagHint(env string) string {

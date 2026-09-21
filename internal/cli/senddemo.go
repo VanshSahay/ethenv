@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"ethenv/internal/rpc"
+	"ethenv/internal/ops"
 	"ethenv/internal/tf"
 	"ethenv/internal/ui"
 )
@@ -21,60 +21,23 @@ func runSendDemo(args []string) error {
 		return err
 	}
 
-	url := *rpcURL
-	if url == "" {
-		var err error
-		if url, err = rpcURLFromEnv(tf.Runner{Dir: *dir}, *env); err != nil {
-			return err
-		}
+	url, err := ops.NodeURL(tf.Runner{Dir: *dir}, *env, *rpcURL)
+	if err != nil {
+		return err
 	}
-	c := rpc.New(url)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	accounts, err := c.Accounts(ctx)
+	res, err := ops.SendDemo(ctx, url, *amount, func(from, to string) {
+		fmt.Printf("sending %s ETH  %s → %s\n", *amount, from, to)
+	})
+	if res.Hash != "" {
+		fmt.Println("tx hash  " + res.Hash)
+	}
 	if err != nil {
 		return err
 	}
-	if len(accounts) < 2 {
-		return fmt.Errorf("node exposes no unlocked accounts (dev/anvil provides 10; prod signers are not exposed over RPC)")
-	}
-	from, to := accounts[0], accounts[1]
-
-	wei, err := rpc.EthToWei(*amount)
-	if err != nil {
-		return err
-	}
-	before, err := c.BlockNumber(ctx)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("sending %s ETH  %s → %s\n", *amount, from, to)
-	hash, err := c.SendValue(ctx, from, to, wei)
-	if err != nil {
-		return err
-	}
-	fmt.Println("tx hash  " + hash)
-
-	var receipt map[string]any
-	for i := 0; i < 30; i++ {
-		time.Sleep(time.Second)
-		if receipt, err = c.Receipt(ctx, hash); err != nil {
-			return err
-		}
-		if receipt != nil {
-			break
-		}
-	}
-	if receipt == nil {
-		return fmt.Errorf("transaction %s not mined within 30s", hash)
-	}
-
-	blockNum, _ := receipt["blockNumber"].(string)
-	gasUsed, _ := receipt["gasUsed"].(string)
-	status, _ := receipt["status"].(string)
 	fmt.Println(ui.OK(fmt.Sprintf("mined: block %s (tip was %d), gasUsed %s, status %s",
-		blockNum, before, gasUsed, status)))
+		res.Block, res.Tip, res.GasUsed, res.Status)))
 	return nil
 }

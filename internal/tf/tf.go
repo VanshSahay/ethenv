@@ -107,19 +107,29 @@ type Output struct {
 }
 
 func (r Runner) OutputsFor(env string) (map[string]Output, error) {
-	statePath := filepath.Join("terraform.tfstate.d", env, "terraform.tfstate")
-	if _, err := os.Stat(filepath.Join(r.Dir, statePath)); err != nil {
+	statePath := filepath.Join(r.Dir, "terraform.tfstate.d", env, "terraform.tfstate")
+	data, err := os.ReadFile(statePath)
+	if err != nil {
 		return nil, fmt.Errorf("environment %q has no terraform state - deploy it first", env)
 	}
-	out, err := r.capture("output", "-json", "-no-color", "-state="+statePath)
-	if err != nil {
-		return nil, fmt.Errorf("terraform output: %w", err)
+	var st struct {
+		Outputs map[string]Output `json:"outputs"`
 	}
-	var outs map[string]Output
-	if err := json.Unmarshal([]byte(out), &outs); err != nil {
-		return nil, err
+	if err := json.Unmarshal(data, &st); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", statePath, err)
 	}
-	return outs, nil
+	if len(st.Outputs) == 0 {
+		return nil, fmt.Errorf("environment %q is not deployed - run: ethenv deploy --env %s", env, env)
+	}
+	return st.Outputs, nil
+}
+
+func String(outs map[string]Output, name string) (string, error) {
+	o, ok := outs[name]
+	if !ok {
+		return "", fmt.Errorf("missing terraform output %q", name)
+	}
+	return strings.Trim(string(o.Value), `"`), nil
 }
 
 func StringList(outs map[string]Output, name string) ([]string, error) {
@@ -139,5 +149,10 @@ func (r Runner) HasState() bool {
 		return true
 	}
 	_, err := os.Stat(filepath.Join(r.Dir, "terraform.tfstate.d"))
+	return err == nil
+}
+
+func (r Runner) WorkspaceStateExists(env string) bool {
+	_, err := os.Stat(filepath.Join(r.Dir, "terraform.tfstate.d", env, "terraform.tfstate"))
 	return err == nil
 }

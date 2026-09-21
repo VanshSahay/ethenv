@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"ethenv/internal/rpc"
+	"ethenv/internal/ops"
 	"ethenv/internal/tf"
 	"ethenv/internal/ui"
 )
@@ -28,23 +28,14 @@ func runFaucet(args []string) error {
 		return fmt.Errorf("anvil_setBalance only exists on the dev node; use --env dev or --rpc <url>")
 	}
 
-	url := *rpcURL
-	if url == "" {
-		var err error
-		if url, err = rpcURLFromEnv(tf.Runner{Dir: *dir}, *env); err != nil {
-			return err
-		}
-	}
-
-	wei, err := rpc.EthToWei(*amount)
+	url, err := ops.NodeURL(tf.Runner{Dir: *dir}, *env, *rpcURL)
 	if err != nil {
 		return err
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := rpc.New(url).SetBalance(ctx, *to, wei); err != nil {
+	if err := ops.Faucet(ctx, url, *to, *amount); err != nil {
 		return fmt.Errorf("faucet failed: %w", err)
 	}
 	fmt.Println(ui.OK(fmt.Sprintf("funded %s with %s ETH (chain of env %q)", *to, *amount, *env)))
