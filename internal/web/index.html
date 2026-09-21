@@ -82,9 +82,9 @@
     letter-spacing: -.01em;
     margin: 4px 0 10px;
   }
-  .slot { width: .62ch; height: 1em; overflow: hidden; }
+  .slot { width: 1ch; height: 1.15em; overflow: hidden; }
   .reel { display: block; transition: transform .4s cubic-bezier(.2, .7, .2, 1); }
-  .reel span { display: block; height: 1em; text-align: center; }
+  .reel span { display: block; height: 1.15em; line-height: 1.15; text-align: center; }
   .slot.dim { opacity: .14; }
   .slot + .slot { margin-left: .06em; }
 
@@ -155,7 +155,6 @@
   @media (max-width: 560px) {
     body { padding: 24px 16px 48px; }
     .envs { grid-template-columns: 1fr; }
-    .slot { width: .58ch; }
   }
   @media (prefers-reduced-motion: reduce) {
     .reel { transition: none; }
@@ -292,7 +291,7 @@ function setOdometer(h) {
   [...digits].forEach((d, i) => {
     const slot = box.children[i];
     const reel = slot.firstElementChild;
-    reel.style.transform = "translateY(-" + (Number(d) * 1) + "em)";
+    reel.style.transform = "translateY(-" + (Number(d) * 1.15) + "em)";
     slot.classList.toggle("dim", i < firstSig);
   });
 }
