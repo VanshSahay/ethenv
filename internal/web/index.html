@@ -291,7 +291,7 @@ function setOdometer(h) {
   const firstSig = h === 0 ? digits.length - 1 : digits.search(/[1-9]/);
   [...digits].forEach((d, i) => {
     const slot = box.children[i];
-    reel = slot.firstElementChild;
+    const reel = slot.firstElementChild;
     reel.style.transform = "translateY(-" + (Number(d) * 1) + "em)";
     slot.classList.toggle("dim", i < firstSig);
   });
