@@ -106,10 +106,14 @@ type Output struct {
 	Value json.RawMessage `json:"value"`
 }
 
-func (r Runner) Outputs() (map[string]Output, error) {
-	out, err := r.capture("output", "-json", "-no-color")
+func (r Runner) OutputsFor(env string) (map[string]Output, error) {
+	statePath := filepath.Join("terraform.tfstate.d", env, "terraform.tfstate")
+	if _, err := os.Stat(filepath.Join(r.Dir, statePath)); err != nil {
+		return nil, fmt.Errorf("environment %q has no terraform state - deploy it first", env)
+	}
+	out, err := r.capture("output", "-json", "-no-color", "-state="+statePath)
 	if err != nil {
-		return nil, fmt.Errorf("terraform output: %w (has the stack been applied?)", err)
+		return nil, fmt.Errorf("terraform output: %w", err)
 	}
 	var outs map[string]Output
 	if err := json.Unmarshal([]byte(out), &outs); err != nil {

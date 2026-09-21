@@ -37,7 +37,7 @@ func runStatus(args []string) error {
 		if envName == "" {
 			return fmt.Errorf("either --env <name> or --rpc <url> is required")
 		}
-		outs, err := (tf.Runner{Dir: *dir}).Outputs()
+		outs, err := (tf.Runner{Dir: *dir}).OutputsFor(envName)
 		if err != nil {
 			return err
 		}

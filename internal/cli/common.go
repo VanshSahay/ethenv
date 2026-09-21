@@ -9,7 +9,7 @@ import (
 const defaultDir = "terraform"
 
 func rpcURLFromEnv(r tf.Runner, env string) (string, error) {
-	outs, err := r.Outputs()
+	outs, err := r.OutputsFor(env)
 	if err != nil {
 		return "", err
 	}

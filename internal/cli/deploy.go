@@ -45,7 +45,7 @@ func runEnvCommand(args []string, verb string) error {
 	}
 
 	if verb == "deploy" {
-		if outs, oerr := r.Outputs(); oerr == nil {
+		if outs, oerr := r.OutputsFor(*env); oerr == nil {
 			if urls, uerr := tf.StringList(outs, "node_rpc_urls"); uerr == nil && len(urls) > 0 {
 				fmt.Println()
 				fmt.Println(ui.OK(fmt.Sprintf("deployed %d node(s)", len(urls))))
