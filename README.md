@@ -62,106 +62,13 @@ go build -o ethenv ./cmd/ethenv
 ./ethenv destroy --env dev
 ```
 
-No AWS credentials at hand? The RPC path still demos locally:
+local:
 
 ```bash
 anvil --port 8545 --chain-id 1337 --block-time 2 &
 ./ethenv status --rpc http://127.0.0.1:8545
 ./ethenv send-demo --rpc http://127.0.0.1:8545
 ```
-
-
-
-## Web UI
-
-`./ethenv serve` (binds 127.0.0.1:8080) opens a black-and-white single-page
-dashboard served by the same binary — zero JS dependencies, one embedded
-HTML file. It shows a block-height odometer that ticks with the chain, a
-per-block "tape", the node health table for the selected environment
-(reads each workspace's state file directly), and dev-chain actions
-(demo transfer + faucet). Deploy/destroy intentionally stay CLI-only.
-
-## Evaluation criteria mapping
-
-
-| #   | Parameter        | Where / how                                                                                                                                                |
-| --- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Workspaces**   | `terraform workspace select dev                                                                                                                            |
-| 2   | **Variables**    | `terraform/variables.tf` declares **9 variables**; `terraform.tfvars.dev` vs `.prod` differ in `node_count`, `chain_id`, `ebs_volume_size`                 |
-| 3   | **Data blocks**  | `main.tf` has **4**: `aws_ami` (Canonical lookup), `aws_vpc` (default VPC), `aws_subnets`, `aws_availability_zones` — zero hardcoded IDs                   |
-| 4   | **Code quality** | `terraform validate` ✓, `terraform fmt` clean, tagged resources (`Project`/`Environment`/`Component`/`ManagedBy`), `go vet` clean, single static Go binary |
-| 5   | **Env config**   | dev: **1** node / 8 GiB / chain 1337 · prod: **3** validators / 20 GiB / chain 31337                                                                       |
-
-
-The examiner's four verification commands all work as-is:
-
-```bash
-terraform workspace list
-terraform validate
-grep -c "^data " main.tf              # → 4
-terraform plan -var-file="terraform.tfvars.dev"
-```
-
-`ethenv verify` automates all of the above plus the red-flag scan (hardcoded
-`vpc-…`/`subnet-…`/`ami-…` ids) and exits non-zero on any failure.
-
-## Candidate checklist
-
-- [x] 2 workspaces (dev & prod) — created by `ethenv deploy`
-- [x] `variables.tf` with 5+ variables — 9 declared
-- [x] `terraform.tfvars.dev` & `.prod` with different values — 3 keys differ
-- [x] 3+ data blocks — 4 (AMI, VPC, subnets, AZs)
-- [x] No hardcoded resource IDs in `main.tf` — everything is a data-source lookup
-- [x] Dev smaller than prod — both t3.micro **on purpose (free tier)**; prod outweighs dev via 3 nodes + 20 GiB volumes + separate chain id. One-line upgrade to t3.small is available in `terraform.tfvars.prod` when cost allows
-- [x] Dev 1 instance, prod 3 instances — exactly
-- [x] All resources tagged with environment name — `Environment = terraform.workspace`
-- [x] `terraform validate` passes — verified
-- [x] Can switch workspaces and apply both — that is literally `ethenv deploy --env dev && ethenv deploy --env prod`
-
-
-
-## Red flags — and why none apply
-
-
-| Red flag                   | This project                                                                  |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| Hardcoded IDs              | everything from data blocks; `ethenv verify` greps for `vpc-…/subnet-…/ami-…` |
-| No workspaces / only 1     | `dev` and `prod` workspaces with isolated state                               |
-| Same config everywhere     | different node count, chain id, volume size                                   |
-| `terraform validate` fails | passes; checked by `ethenv verify`                                            |
-| No data blocks             | 4                                                                             |
-
-
-
-
-## Notes
-
-- **Free tier**: 3 × t3.micro + 2 × 8/20 GiB gp3 for a few hours is free;
-still, `ethenv destroy --env prod` + `--env dev` after the demo.
-- **Keys** in `terraform/signers.tf` are demo-only (`cast wallet new`),
-throwaway, and pre-funded only in the private 31337 genesis. Never reuse.
-Each node has two identities: a **signer key** (Clique block signing,
-address baked into the genesis `extradata`) and a **nodekey** (DevP2P
-transport identity — its pubkey is what appears in the enode URL and
-static-nodes.json). geth writes a random nodekey on first start, so
-ours is pre-provisioned at `/eth/geth/nodekey` to keep the peer list
-deterministic.
-- **geth is pinned to v1.13.15**: the classic Clique signer flags
-(`--mine --unlock`) were removed from newer releases; v1.13.15 is a
-battle-tested LTS for private PoA chains.
-- **Boot flow**: user_data only installs docker + awscli and registers a
-systemd `ethnode` service that runs `/eth/boot.sh` with
-`Restart=on-failure`. Boot logs: `journalctl -u ethnode`. On a good run
-nodes are RPC-reachable ~60-90s after launch.
-- **Prod peering**: each node discovers its siblings by EC2 tags (IAM role
-grants `ec2:DescribeInstances`), builds `/eth/static-nodes.json` from the
-baked nodekey pubkeys + discovered private IPs, and points `--bootnodes`
-at node-0. Nothing is hardcoded; SSH in with
-`ssh -i ~/.ssh/ethenv_demo ubuntu@<ip>` to debug.
-- The first `terraform plan` after `init` takes a couple of minutes (provider
-download). Subsequent runs are fast. Nodes are RPC-reachable ~60-90s after
-launch.
-
 
 
 ## Troubleshooting (learned the hard way)
