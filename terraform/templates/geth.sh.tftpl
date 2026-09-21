@@ -1,0 +1,139 @@
+#!/bin/bash
+set -euxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+apt-get update -y
+apt-get install -y docker.io awscli
+systemctl enable --now docker
+
+mkdir -p /eth
+
+cat > /eth/boot.sh <<'BOOT'
+#!/bin/bash
+set -euxo pipefail
+
+REGION="${region}"
+PROJECT="${project}"
+ENVIRONMENT="${environment}"
+
+TOKEN=$(curl -sS -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+PUB_IP=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/public-ipv4)
+PRIV_IP=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/local-ipv4)
+
+cat > /eth/genesis.json <<'GENESIS'
+{
+  "config": {
+    "chainId": ${chain_id},
+    "homesteadBlock": 0,
+    "eip150Block": 0,
+    "eip155Block": 0,
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "istanbulBlock": 0,
+    "berlinBlock": 0,
+    "londonBlock": 0,
+    "clique": { "period": ${clique_period}, "epoch": 30000 }
+  },
+  "difficulty": "1",
+  "gasLimit": "8000000",
+  "extradata": "${extradata}",
+  "alloc": {
+${alloc_entries}
+  }
+}
+GENESIS
+
+echo "${signer_private_key}" > /eth/key.prv
+chmod 600 /eth/key.prv
+echo "ethenv-demo" > /eth/pw.txt
+chmod 600 /eth/pw.txt
+
+docker run --rm -v /eth:/eth ethereum/client-go:v1.13.15 \
+  init --datadir /eth /eth/genesis.json
+
+if [ -z "$(ls /eth/keystore 2>/dev/null)" ]; then
+  docker run --rm -v /eth:/eth ethereum/client-go:v1.13.15 \
+    account import --datadir /eth --password /eth/pw.txt /eth/key.prv
+fi
+
+mkdir -p /eth/geth
+echo "${nodekey_private_key}" > /eth/geth/nodekey
+chmod 600 /eth/geth/nodekey
+
+PEERS=""
+for _ in $(seq 1 60); do
+  PEERS=$(aws ec2 describe-instances --region "$REGION" \
+    --filters Name=tag:Project,Values="$PROJECT" \
+              Name=tag:Environment,Values="$ENVIRONMENT" \
+              Name=instance-state-name,Values=running,pending \
+    --query 'Reservations[].Instances[?PrivateIpAddress!=null].[Tags[?Key==`Name`].Value|[0],PrivateIpAddress]' \
+    --output text | sort)
+  if [ "$(echo "$PEERS" | grep -c .)" -ge ${node_count} ]; then
+    break
+  fi
+  sleep 5
+done
+NODE0_IP=$(echo "$PEERS" | awk -F'\t' '$1 ~ /node-0$/ {print $2; exit}')
+
+{
+  echo "["
+  FIRST=1
+  while IFS=$'\t' read -r NAME IP; do
+    [ -z "$NAME" ] && continue
+    case "$NAME" in
+      *node-0) PK="${nodekey_enode_0}" ;;
+      *node-1) PK="${nodekey_enode_1}" ;;
+      *node-2) PK="${nodekey_enode_2}" ;;
+      *) continue ;;
+    esac
+    if [ $FIRST -eq 0 ]; then echo ","; fi
+    printf '"enode://%s@%s:30303"' "$PK" "$IP"
+    FIRST=0
+  done <<< "$PEERS"
+  echo ""
+  echo "]"
+} > /eth/static-nodes.json
+
+docker rm -f geth 2>/dev/null || true
+
+SIGNER_ADDR="0x${signer_address}"
+docker run -d --name geth --restart unless-stopped --network host \
+  -v /eth:/eth \
+  ethereum/client-go:v1.13.15 \
+  --datadir /eth \
+  --ipcdisable \
+  --networkid ${chain_id} \
+  --syncmode full \
+  --mine --miner.etherbase "$SIGNER_ADDR" \
+  --unlock "$SIGNER_ADDR" --password /eth/pw.txt --allow-insecure-unlock \
+  --http --http.addr 0.0.0.0 --http.port 8545 \
+  --http.api eth,net,web3,admin,clique --http.vhosts='*' --http.corsdomain='*' \
+  --port 30303 --nat "extip:$PUB_IP" \
+  --bootnodes "enode://${nodekey_enode_0}@$NODE0_IP:30303"
+BOOT
+chmod +x /eth/boot.sh
+
+cat > /etc/systemd/system/ethnode.service <<'UNIT'
+[Unit]
+Description=ethenv Ethereum node boot
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=0
+ExecStart=/eth/boot.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl enable --now ethnode
